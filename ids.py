@@ -57,7 +57,7 @@ def start_sniffing():
 
 # --- Main ---
 sniff_thread = threading.Thread(target=start_sniffing)
-sniff_thread.daemon = True
+sniff_thread.daemon = True #  sniffing thread will automatically die when you close the program.
 sniff_thread.start()
 
 with Live(console=console, refresh_per_second=0.5) as live:
