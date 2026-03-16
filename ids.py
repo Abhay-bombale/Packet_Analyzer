@@ -10,6 +10,7 @@ import time
 # --- Configuration ---
 THRESHOLD = 100
 TIME_WINDOW = 10
+alert_tracker = {}  # IP → highest packet count seen
 
 # --- Storage ---
 ip_tracker = defaultdict(list)
@@ -35,19 +36,18 @@ def process_packet(packet):
         ]
 
         if len(ip_tracker[src_ip]) > THRESHOLD:
+            alert_tracker[src_ip] = len(ip_tracker[src_ip])
             log_alert(src_ip, len(ip_tracker[src_ip]))
 
 # --- Dashboard ---
 def build_table():
     table = Table(title="🛡️  IDS Live Monitor")
     table.add_column("Source IP", style="cyan")
-    table.add_column("Packets", style="magenta")
-    table.add_column("Status", style="white")
+    table.add_column("Peak Packets", style="magenta")
+    table.add_column("Status", style="red")
 
-    for ip, timestamps in list(ip_tracker.items()):
-        count = len(timestamps)
-        status = "⚠️  ALERT" if count > THRESHOLD else "✅ Normal"
-        table.add_row(ip, str(count), status)
+    for ip, count in list(alert_tracker.items()):
+        table.add_row(ip, str(count), "⚠️  ALERT DETECTED")
 
     return table
 
