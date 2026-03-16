@@ -11,6 +11,7 @@ import time
 THRESHOLD = 100
 TIME_WINDOW = 10
 alert_tracker = {}  # IP → highest packet count seen
+lock = threading.Lock()
 
 # --- Storage ---
 ip_tracker = defaultdict(list)
@@ -36,7 +37,8 @@ def process_packet(packet):
         ]
 
         if len(ip_tracker[src_ip]) > THRESHOLD:
-            alert_tracker[src_ip] = len(ip_tracker[src_ip])
+            with lock:
+                alert_tracker[src_ip] = len(ip_tracker[src_ip])
             log_alert(src_ip, len(ip_tracker[src_ip]))
 
 # --- Dashboard ---
@@ -45,8 +47,10 @@ def build_table():
     table.add_column("Source IP", style="cyan")
     table.add_column("Peak Packets", style="magenta")
     table.add_column("Status", style="red")
+    with lock:
+        items = list(alert_tracker.items())
 
-    for ip, count in list(alert_tracker.items()):
+    for ip, count in items:
         table.add_row(ip, str(count), "⚠️  ALERT DETECTED")
 
     return table
@@ -60,7 +64,7 @@ sniff_thread = threading.Thread(target=start_sniffing)
 sniff_thread.daemon = True #  sniffing thread will automatically die when you close the program.
 sniff_thread.start()
 
-with Live(console=console, refresh_per_second=0.5) as live:
+with Live(build_table(), console=console, refresh_per_second=2) as live:
     while True:
         live.update(build_table())
-        time.sleep(2)
+        time.sleep(0.5)
