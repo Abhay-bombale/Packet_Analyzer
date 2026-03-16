@@ -1,36 +1,66 @@
 from scapy.all import sniff, IP, TCP
-import time
 from collections import defaultdict
+from rich.console import Console
+from rich.table import Table
+from rich.live import Live
+import threading
 import datetime
+import time
 
-THRESHOLD = 50
-TIME_WINDOW = 5
+# --- Configuration ---
+THRESHOLD = 100
+TIME_WINDOW = 10
 
+# --- Storage ---
 ip_tracker = defaultdict(list)
+console = Console()
 
-def log_alert(src_ip, count, time_window):
+# --- Logging ---
+def log_alert(src_ip, count):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    message = f"[{timestamp}] ALERT: Port scan from {src_ip} — {count} packets in {time_window}s\n"
-    
+    message = f"[{timestamp}] ALERT: Port scan from {src_ip} — {count} packets in {TIME_WINDOW}s\n"
     with open("alerts.log", "a") as f:
         f.write(message)
 
-def packet_process(packet):
+# --- Packet Processing ---
+def process_packet(packet):
     if packet.haslayer(IP) and packet.haslayer(TCP):
         src_ip = packet[IP].src
-        dst_port = packet[TCP].dport
-        # print(f"Packet from {src_ip} -> port {dst_port}")
         now = time.time()
 
         ip_tracker[src_ip].append(now)
-
         ip_tracker[src_ip] = [
             t for t in ip_tracker[src_ip]
             if now - t <= TIME_WINDOW
         ]
-        
-        if len(ip_tracker[src_ip]) >= THRESHOLD:
-            print(f"[ALERT] Possible Port Scan For {src_ip} - {len(ip_tracker[src_ip])} in {TIME_WINDOW}s")
-            log_alert(src_ip, len(ip_tracker[src_ip]), TIME_WINDOW)
 
-sniff(filter="tcp", prn=packet_process, store=False,)
+        if len(ip_tracker[src_ip]) > THRESHOLD:
+            log_alert(src_ip, len(ip_tracker[src_ip]))
+
+# --- Dashboard ---
+def build_table():
+    table = Table(title="🛡️  IDS Live Monitor")
+    table.add_column("Source IP", style="cyan")
+    table.add_column("Packets", style="magenta")
+    table.add_column("Status", style="white")
+
+    for ip, timestamps in list(ip_tracker.items()):
+        count = len(timestamps)
+        status = "⚠️  ALERT" if count > THRESHOLD else "✅ Normal"
+        table.add_row(ip, str(count), status)
+
+    return table
+
+# --- Sniffer Thread ---
+def start_sniffing():
+    sniff(filter="tcp", prn=process_packet, store=False)
+
+# --- Main ---
+sniff_thread = threading.Thread(target=start_sniffing)
+sniff_thread.daemon = True
+sniff_thread.start()
+
+with Live(console=console, refresh_per_second=0.5) as live:
+    while True:
+        live.update(build_table())
+        time.sleep(2)
